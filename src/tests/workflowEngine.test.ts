@@ -171,4 +171,38 @@ describe('FocusFlow AI - Critical Workflow Logic Tests', () => {
     expect(summary).toContain('Study Session Summary:');
     expect(summary).toContain('**Time Planned:** 20 minutes');
   });
+
+  // 8. Testing the specific "I only have 15 minutes left" flow
+  it('8. should adapt session when user says "I only have 15 minutes left", preserving completed tasks and fitting unfinished tasks into 15 minutes', () => {
+    const session = createPlan('Python AsyncIO', 45);
+    const firstTaskId = session.tasks[0].id;
+    const firstTaskMinutes = session.tasks[0].estimatedMinutes;
+
+    // Complete the first task (e.g. 15 min)
+    const completionResult = completeTask(session, firstTaskId);
+    expect(completionResult).not.toBeNull();
+    const activeSession = completionResult!.updatedSession;
+
+    // Process user conversational input: "I only have 15 minutes left"
+    const result = processUserInput('I only have 15 minutes left', activeSession, []);
+
+    expect(result.action).toBe('plan_adapted');
+    expect(result.updatedSession).toBeDefined();
+
+    const adapted = result.updatedSession!;
+    const completedTasks = adapted.tasks.filter(t => t.status === 'completed');
+    const incompleteTasks = adapted.tasks.filter(t => t.status !== 'completed');
+
+    // 1. Completed task is preserved
+    expect(completedTasks.length).toBe(1);
+    expect(completedTasks[0].id).toBe(firstTaskId);
+    expect(completedTasks[0].estimatedMinutes).toBe(firstTaskMinutes);
+
+    // 2. Unfinished tasks fit into the 15-minute remaining budget
+    const remainingMinutes = incompleteTasks.reduce((sum, t) => sum + t.estimatedMinutes, 0);
+    expect(remainingMinutes).toBe(15);
+
+    // 3. Total planned minutes is completed + remaining
+    expect(adapted.totalPlannedMinutes).toBe(firstTaskMinutes + 15);
+  });
 });

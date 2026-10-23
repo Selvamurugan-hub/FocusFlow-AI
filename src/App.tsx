@@ -40,6 +40,28 @@ export const App: React.FC = () => {
 
   // Chat conversation state
   const [messages, setMessages] = useState<ConversationMessage[]>(() => {
+    if (context.currentSession) {
+      const completedCount = context.currentSession.tasks.filter(t => t.status === 'completed').length;
+      const completedMins = context.currentSession.tasks
+        .filter(t => t.status === 'completed')
+        .reduce((sum, t) => sum + t.estimatedMinutes, 0);
+
+      const resumeNotice: ConversationMessage = {
+        id: 'msg-resume',
+        sender: 'assistant',
+        timestamp: new Date().toISOString(),
+        text: `👋 **Welcome back to FocusFlow AI!**\n\n📌 **Active session restored:** "${context.currentSession.goal.title}" (${context.currentSession.totalPlannedMinutes}m).\n\nProgress: **${completedCount} of ${context.currentSession.tasks.length} tasks completed** (~${completedMins}m done).\n\nReady to continue where you left off, or adapt your plan?`,
+        intent: 'session_resumed',
+        source: 'local-engine',
+        suggestedQuickReplies: [
+          'Mark next task complete',
+          'I only have 15 minutes left',
+          'Summarize my progress',
+        ],
+      };
+      return [resumeNotice];
+    }
+
     const initialGreeting: ConversationMessage = {
       id: 'msg-welcome',
       sender: 'assistant',
@@ -54,24 +76,6 @@ export const App: React.FC = () => {
         'Summarize my progress.',
       ],
     };
-
-    if (context.currentSession) {
-      const resumeNotice: ConversationMessage = {
-        id: 'msg-resume',
-        sender: 'assistant',
-        timestamp: new Date().toISOString(),
-        text: `📌 **Active session restored:** "${context.currentSession.goal.title}" (${context.currentSession.totalPlannedMinutes}m).\n\nCompleted: ${context.currentSession.tasks.filter(t => t.status === 'completed').length} of ${context.currentSession.tasks.length} tasks.\n\nReady to continue where you left off, or adapt your plan?`,
-        intent: 'session_resumed',
-        source: 'local-engine',
-        suggestedQuickReplies: [
-          'Mark next task complete',
-          'I only have 20 minutes',
-          'Summarize my progress',
-        ],
-      };
-      return [initialGreeting, resumeNotice];
-    }
-
     return [initialGreeting];
   });
 
@@ -91,6 +95,18 @@ export const App: React.FC = () => {
   const [useBackendAi, setUseBackendAi] = useState(context.userPreferences.useBackendAiIfAvailable);
 
   const speechManagerRef = useRef<SpeechManager | null>(null);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowCompletionModal(false);
+        setShowNewPlanModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Synchronize state changes to localStorage
   useEffect(() => {
@@ -120,11 +136,14 @@ export const App: React.FC = () => {
   // Handle incoming user request (text or voice)
   const handleUserMessage = useCallback(
     async (text: string, isVoice = false) => {
+      const trimmed = text?.trim();
+      if (!trimmed) return;
+
       // 1. Append user message to conversation
       const userMsg: ConversationMessage = {
         id: `msg-user-${Date.now()}`,
         sender: 'user',
-        text,
+        text: trimmed,
         timestamp: new Date().toISOString(),
         isVoice,
       };
@@ -136,12 +155,12 @@ export const App: React.FC = () => {
 
       // 2. Try optional backend AI if enabled and reachable
       if (useBackendAi && backendAvailable) {
-        result = await queryBackendAi(text, currentSession, [...messages, userMsg]);
+        result = await queryBackendAi(trimmed, currentSession, [...messages, userMsg]);
       }
 
       // 3. Fallback to local workflow engine (baseline demo guaranteed)
       if (!result) {
-        result = processUserInput(text, currentSession, [...messages, userMsg]);
+        result = processUserInput(trimmed, currentSession, [...messages, userMsg]);
       }
 
       // 4. Update session state if workflow engine altered it
@@ -283,10 +302,10 @@ export const App: React.FC = () => {
     });
   };
 
-  // Quick Adapt (e.g. Fit 20m, 30m)
+  // Quick Adapt (e.g. Fit 15m, 20m, 30m)
   const handleQuickAdapt = (minutes: number) => {
     if (!currentSession) return;
-    const { updatedSession, explanation } = adaptPlan(currentSession, minutes);
+    const { updatedSession, explanation } = adaptPlan(currentSession, minutes, false, undefined, true);
     setCurrentSession(updatedSession);
 
     const msg: ConversationMessage = {
@@ -391,18 +410,19 @@ export const App: React.FC = () => {
       id: `msg-demo-${Date.now()}`,
       sender: 'assistant',
       timestamp: new Date().toISOString(),
-      text: `🚀 **Demo Session Loaded:** Python AsyncIO (45m Sprint).\n- Task 1 was previously completed.\n- Task 2 is active.\n- Context is preserved in localStorage.\n\nTry saying: *"I only have 20 minutes"* to observe adaptive re-budgeting while preserving completed work!`,
+      text: `🚀 **Demo Session Loaded:** Python AsyncIO (45m Sprint).\n- Task 1 was previously completed (15m).\n- Task 2 is active.\n- Context is preserved in localStorage.\n\nTry saying: *"I only have 15 minutes left"* to observe adaptive re-budgeting while preserving completed work!`,
       intent: 'demo_loaded',
       source: 'local-engine',
       suggestedQuickReplies: [
-        'I only have 20 minutes.',
-        "I'm struggling with this concept.",
+        'I only have 15 minutes left',
+        "I'm struggling with this concept",
         'Mark next task complete',
-        'Summarize my progress.',
+        'Summarize my progress',
       ],
     };
 
-    setMessages(prev => [...prev, demoMsg]);
+    // Clean reset to demo message to prevent duplicate stacked demo entries
+    setMessages([demoMsg]);
   };
 
   // Reset Session

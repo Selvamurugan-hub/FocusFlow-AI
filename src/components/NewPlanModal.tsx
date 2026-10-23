@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Clock, BookOpen } from 'lucide-react';
+import { FocusFlowLogo } from './FocusFlowLogo';
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -16,7 +17,7 @@ const PRESET_TOPICS = [
   'SQL Performance & Indexing',
 ];
 
-const PRESET_DURATIONS = [15, 25, 30, 45, 60];
+const PRESET_DURATIONS = [15, 20, 30, 45, 60];
 
 export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   isOpen,
@@ -26,32 +27,50 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   const [topic, setTopic] = useState('');
   const [minutes, setMinutes] = useState(45);
 
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim()) return;
-    onCreatePlan(topic.trim(), minutes);
+    const trimmed = topic.trim();
+    if (!trimmed) return;
+    onCreatePlan(trimmed, minutes);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-navy-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-plan-title"
+    >
+      <div className="bg-navy-900 border border-slate-700/80 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-4 bg-navy-850 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-cyan-400">
-              <Sparkles className="w-4 h-4" />
-            </div>
+        <div className="p-4 sm:p-5 bg-navy-850 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <FocusFlowLogo size={32} className="w-8 h-8 shrink-0" />
             <div>
-              <h3 className="text-sm font-bold text-white">Create New Study Plan</h3>
-              <p className="text-[11px] text-slate-400">Configure topic & time budget</p>
+              <h3 id="new-plan-title" className="text-base font-bold text-white">Create New Study Plan</h3>
+              <p className="text-xs text-slate-300">Set your topic and available time window</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            aria-label="Close modal"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <X className="w-4 h-4" />
           </button>
@@ -60,8 +79,8 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-accent-light" />
+            <label className="block text-xs font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
+              <BookOpen className="w-4 h-4 text-cyan-400" />
               <span>Study Topic or Subject</span>
             </label>
             <input
@@ -70,17 +89,17 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               placeholder="e.g. Python AsyncIO, React Hooks, Biology"
-              className="w-full bg-navy-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-navy-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent"
             />
 
             {/* Quick Topic Presets */}
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
               {PRESET_TOPICS.map((p, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => setTopic(p)}
-                  className="text-[10px] bg-navy-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                  className="text-xs bg-navy-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-md border border-slate-700/80 transition-colors active:scale-95"
                 >
                   {p}
                 </button>
@@ -89,8 +108,8 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-accent-light" />
+            <label className="block text-xs font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-cyan-400" />
               <span>Time Budget ({minutes} minutes)</span>
             </label>
             <div className="flex items-center gap-2">
@@ -99,10 +118,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
                   key={dur}
                   type="button"
                   onClick={() => setMinutes(dur)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all active:scale-95 ${
                     minutes === dur
-                      ? 'bg-accent border-accent text-white shadow-sm'
-                      : 'bg-navy-850 border-slate-700 text-slate-400 hover:text-white'
+                      ? 'bg-accent border-accent text-white shadow-sm ring-1 ring-accent-light'
+                      : 'bg-navy-850 border-slate-700 text-slate-300 hover:text-white hover:bg-navy-800'
                   }`}
                 >
                   {dur}m
@@ -112,20 +131,20 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="pt-2 flex items-center justify-end gap-2">
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs hover:bg-slate-800"
+              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!topic.trim()}
-              className="px-4 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+              className="px-5 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-accent/20 transition-all active:scale-95"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-4 h-4" />
               <span>Generate Plan</span>
             </button>
           </div>

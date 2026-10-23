@@ -473,7 +473,8 @@ export function adaptPlan(
   currentSession: StudySession,
   newBudgetMinutes?: number,
   isStruggling?: boolean,
-  strugglingConcept?: string
+  strugglingConcept?: string,
+  isRemainingBudget?: boolean
 ): { updatedSession: StudySession; explanation: string } {
   const completedTasks = currentSession.tasks.filter(t => t.status === 'completed');
   const incompleteTasks = currentSession.tasks.filter(t => t.status !== 'completed');
@@ -513,14 +514,20 @@ export function adaptPlan(
     };
 
     updatedTasks = [...completedTasks, microStep1, microStep2];
-    explanation = `I understand! Let's lower the friction. I preserved your ${completedTasks.length} completed task(s) and restructured the remainder into two focused micro-steps for "${conceptName}". You have ${remainingTime} minutes remaining.`;
+    explanation = `I understand! Let's lower the friction. Kept your ${completedTasks.length} completed task(s) intact and restructured the remainder into two focused micro-steps for "${conceptName}". You have ${step1Mins + step2Mins} minutes remaining.`;
   } else if (newBudgetMinutes !== undefined) {
     // Re-budgeting
-    const availableRemainingMinutes = Math.max(5, newBudgetMinutes - completedMinutes);
-
     if (incompleteTasks.length === 0) {
       explanation = `All tasks in this session are already completed! You can start a new plan or review your accomplishments.`;
       return { updatedSession: currentSession, explanation };
+    }
+
+    // Determine available remaining minutes for unfinished tasks
+    let availableRemainingMinutes: number;
+    if (isRemainingBudget || newBudgetMinutes <= completedMinutes) {
+      availableRemainingMinutes = Math.max(5, newBudgetMinutes);
+    } else {
+      availableRemainingMinutes = Math.max(5, newBudgetMinutes - completedMinutes);
     }
 
     // Sort incomplete tasks by priority (high first)
@@ -530,9 +537,10 @@ export function adaptPlan(
     });
 
     let tasksToKeep: StudyTask[];
-    if (availableRemainingMinutes <= 15) {
-      // Pick top 1-2 highest priority tasks
-      tasksToKeep = sortedIncomplete.slice(0, Math.min(2, sortedIncomplete.length));
+    if (availableRemainingMinutes <= 10 && sortedIncomplete.length > 1) {
+      tasksToKeep = sortedIncomplete.slice(0, 1);
+    } else if (availableRemainingMinutes <= 20 && sortedIncomplete.length > 2) {
+      tasksToKeep = sortedIncomplete.slice(0, 2);
     } else {
       tasksToKeep = sortedIncomplete;
     }
@@ -559,15 +567,21 @@ export function adaptPlan(
     });
 
     updatedTasks = [...completedTasks, ...rebalancedIncomplete];
+    const totalPlanned = completedMinutes + availableRemainingMinutes;
 
-    explanation = `Adapted your schedule for ${newBudgetMinutes} total minutes. Kept your ${completedTasks.length} completed task(s) intact and reallocated the remaining ${availableRemainingMinutes} minutes across ${rebalancedIncomplete.length} priority task(s).`;
+    if (completedTasks.length > 0) {
+      explanation = `Adapted your schedule for ${availableRemainingMinutes} remaining minutes (${totalPlanned}m total). Kept your ${completedTasks.length} completed task(s) intact and reallocated the remaining ${availableRemainingMinutes} minutes across ${rebalancedIncomplete.length} priority task(s).`;
+    } else {
+      explanation = `Adapted your schedule for ${totalPlanned} total minutes. Kept your 0 completed task(s) intact and reallocated the remaining ${availableRemainingMinutes} minutes across ${rebalancedIncomplete.length} priority task(s).`;
+    }
   }
 
+  const updatedTotalPlanned = updatedTasks.reduce((s, t) => s + t.estimatedMinutes, 0);
   const updatedSession: StudySession = {
     ...currentSession,
     tasks: updatedTasks,
     updatedAt: new Date().toISOString(),
-    totalPlannedMinutes: newBudgetMinutes ? newBudgetMinutes : currentSession.totalPlannedMinutes,
+    totalPlannedMinutes: updatedTotalPlanned,
     activeTaskId: updatedTasks.find(t => t.status === 'in_progress')?.id || updatedTasks.find(t => t.status === 'pending')?.id,
   };
 
@@ -691,6 +705,7 @@ export function processUserInput(
   currentSession: StudySession | null,
   recentMessages: ConversationMessage[]
 ): EngineResult {
+  const lower = text.toLowerCase();
   const lastAssistantMsg = [...recentMessages].reverse().find(m => m.sender === 'assistant');
   const intent = detectIntent(text, currentSession, lastAssistantMsg);
 
@@ -801,8 +816,9 @@ export function processUserInput(
       };
     }
 
+    const isRemaining = lower.includes('left') || lower.includes('remaining') || lower.includes('more') || lower.includes('from now');
     const newMinutes = extractMinutes(text) || Math.max(10, Math.round(currentSession.totalPlannedMinutes / 2));
-    const { updatedSession, explanation } = adaptPlan(currentSession, newMinutes);
+    const { updatedSession, explanation } = adaptPlan(currentSession, newMinutes, false, undefined, isRemaining);
 
     return {
       action: 'plan_adapted',
